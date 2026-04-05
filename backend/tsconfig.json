@@ -1,0 +1,17 @@
+{
+  "files": [
+    "./src/match_handler.ts",
+    "./src/leaderboard.ts",
+    "./src/matchmaker.ts",
+    "./src/rpc.ts"
+  ],
+  "compilerOptions": {
+    "target": "es5",
+    "typeRoots": ["./node_modules"],
+    "outFile": "./build/index.js",
+    "strict": true,
+    "lib": ["es5", "es2015.promise", "es2015.iterable", "es2015.collection", "es2016.array.include"],
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}

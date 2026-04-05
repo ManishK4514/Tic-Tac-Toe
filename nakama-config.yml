@@ -1,0 +1,29 @@
+name: nakama1
+data_dir: /nakama/data/
+
+runtime:
+  js_entrypoint: index.js
+
+logger:
+  level: DEBUG
+
+session:
+  token_expiry_sec: 7200
+
+socket:
+  server_key: defaultkey
+  port: 7350
+  max_message_size_bytes: 4096
+  max_request_size_bytes: 131072
+  idle_timeout_ms: 60000
+  write_wait_ms: 5000
+  pong_wait_ms: 10000
+  ping_period_ms: 8000
+
+console:
+  port: 7351
+  username: admin
+  password: password
+
+leaderboard:
+  blacklist_rank_cache: []

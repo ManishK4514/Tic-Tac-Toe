@@ -2,8 +2,10 @@
 
 A real-time multiplayer Tic-Tac-Toe game where two players can play against each other from anywhere. The game logic runs entirely on the server — so no cheating is possible from the client side.
 
-**Live demo**: `[deployed URL here]`
+## 🎮 Live Demo
+[Multiplayer TicTacToe Demo.webm](https://github-production-user-asset-6210df.s3.amazonaws.com/108109935/573937076-763aeb2c-ca99-4ab1-b78c-3bad386a8da1.webm?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20260405%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260405T175019Z&X-Amz-Expires=300&X-Amz-Signature=8be2ca0a5881d0eb765317e624cdf313acef1e08ec0180692a187503828fabb6&X-Amz-SignedHeaders=host)
 
+🎥 [Watch Multiplayer Tic Tac Toe Demo](https://github.com/user-attachments/assets/763aeb2c-ca99-4ab1-b78c-3bad386a8da1)
 ---
 
 ## What's inside?

@@ -1,37 +1,42 @@
-# Multiplayer Tic-Tac-Toe — Nakama Backend
+# Multiplayer Tic-Tac-Toe 🎮
 
-A production-ready, real-time multiplayer Tic-Tac-Toe game built with a **server-authoritative** architecture using [Nakama](https://heroiclabs.com/nakama/) as the game backend.
+A real-time multiplayer Tic-Tac-Toe game where two players can play against each other from anywhere. The game logic runs entirely on the server — so no cheating is possible from the client side.
 
-**Live demo**: `[deployed URL here]`  
-**Nakama server**: `[Nakama server URL here]`
-
----
-
-## Table of Contents
-
-1. [Setup & Installation](#1-setup--installation)
-2. [Architecture & Design Decisions](#2-architecture--design-decisions)
-3. [Deployment Process](#3-deployment-process)
-4. [API & Server Configuration](#4-api--server-configuration)
-5. [How to Test Multiplayer](#5-how-to-test-multiplayer)
+**Live demo**: `[deployed URL here]`
 
 ---
 
-## 1. Setup & Installation
+## What's inside?
 
-### Prerequisites
+- **Classic mode** — play without any time pressure
+- **Timed mode** — 30 seconds per turn, or you forfeit automatically
+- **Leaderboard** — tracks your wins, losses, draws and win streaks
+- **Auto-forfeit on disconnect** — if your opponent closes the tab, you win
+- Works on mobile too
 
-- [Docker](https://docs.docker.com/get-docker/) + [Docker Compose](https://docs.docker.com/compose/install/) (v2+)
-- [Node.js](https://nodejs.org/) 18+ and npm
+---
 
-### Clone the repository
+## Tech Stack
 
-```bash
-git clone <repo-url>
-cd tic-tac-toe-nakama
-```
+| What | Technology |
+|------|-----------|
+| Game server | [Nakama](https://heroiclabs.com/nakama/) (open-source game backend) |
+| Backend logic | TypeScript (compiled and loaded into Nakama) |
+| Database | PostgreSQL |
+| Frontend | React + TypeScript + Vite |
+| Styling | TailwindCSS |
+| Local setup | Docker Compose |
 
-### Step 1 — Build the Nakama backend module
+---
+
+## 1. Running Locally
+
+### What you need first
+
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose v2
+- [Node.js](https://nodejs.org/) 18+
+
+### Step 1 — Build the backend
 
 ```bash
 cd backend
@@ -40,29 +45,27 @@ npm run build
 cd ..
 ```
 
-This compiles the TypeScript backend to `backend/build/index.js`, which Nakama loads as its runtime module.
+This compiles the game logic into `backend/build/index.js`. Nakama picks this up automatically.
 
-### Step 2 — Start the Nakama server (Docker Compose)
+### Step 2 — Start the server
 
 ```bash
 docker compose up
 ```
 
-This starts:
-- **CockroachDB** on port `26257` — Nakama's database
-- **Nakama** on ports `7350` (HTTP API), `7351` (developer console), `7349` (gRPC)
+This starts the Nakama game server and PostgreSQL database. First time takes about 30 seconds.
 
-First startup takes ~30 seconds for DB migrations. Verify it's running:
+Once it's running, open the Nakama developer console to confirm everything loaded:
 
 ```
 http://localhost:7351
 ```
 
-Login with `admin` / `password`. Navigate to **Runtime → Modules** — you should see `index.js` listed.
+Login: `admin` / `password` → go to **Runtime → Modules** → you should see `index.js` listed there.
 
-> **Note**: If you change backend code, run `npm run build` in `backend/`, then `docker compose restart nakama` to reload the module.
+### Step 3 — Start the frontend
 
-### Step 3 — Start the frontend (development)
+Open a new terminal:
 
 ```bash
 cd frontend
@@ -70,151 +73,106 @@ npm install
 npm run dev
 ```
 
-The frontend runs on `http://localhost:3000`.
+Frontend runs at `http://localhost:3000`
 
-Open `http://localhost:3000` in two different browser profiles (or incognito windows) to test multiplayer locally.
+### How to test multiplayer locally
 
----
+Since both players need different identities, **don't use two tabs in the same window** — they'll share storage and appear as the same user.
 
-## 2. Architecture & Design Decisions
+Instead, open:
+- One tab in a **normal window**
+- One tab in an **incognito window** (or use a different browser entirely)
 
-### Why Nakama?
+Then click **Play Classic** in both within a second or two — they'll be matched automatically.
 
-Nakama is an open-source game server designed specifically for real-time multiplayer games. It provides:
-- **Authoritative match handlers** — game logic runs on the server, not the client
-- **Built-in matchmaking** — finds opponents and creates matches automatically
-- **Real-time socket communication** — low-latency bidirectional messaging
-- **Leaderboards & Storage** — persistent player stats without a custom database layer
-- **Self-hostable** — full control, no vendor lock-in for production
-
-### Server-Authoritative Design
-
-All game logic runs exclusively on the Nakama server. The client is a pure view layer:
-
-```
-Client A                  Nakama Server              Client B
-   │                           │                          │
-   │── MOVE (cell=4) ─────────▶│                          │
-   │                    Validate move                      │
-   │                    Update board state                 │
-   │                    Check win conditions               │
-   │◀── STATE_UPDATE ──────────│─── STATE_UPDATE ─────────▶│
-   │                           │                          │
-```
-
-The server rejects:
-- Moves from the wrong player (out-of-turn)
-- Moves to already-occupied cells
-- Moves with invalid cell indices (not 0–8)
-- Moves after the game is over
-
-The client **never computes** game state — it only sends move intents and renders what the server tells it.
-
-### Matchmaking Flow
-
-```
-Player A clicks "Play"          Player B clicks "Play"
-        │                                │
-        ▼                                ▼
-socket.addMatchmaker()           socket.addMatchmaker()
-        │                                │
-        └──── Nakama Matchmaker ─────────┘
-                     │
-              matchmakerMatched()
-              (server-side hook)
-                     │
-              nk.matchCreate("tictactoe")
-                     │
-              Returns matchId to both clients
-                     │
-        ┌────────────┘────────────┐
-        ▼                         ▼
-socket.joinMatch(matchId)   socket.joinMatch(matchId)
-        │                         │
-        └── matchJoin() assigns X and O ──┘
-                     │
-           PLAYER_JOINED broadcast
-           (game begins)
-```
-
-### Message Opcodes
-
-| OpCode | Direction | Description |
-|--------|-----------|-------------|
-| `1` MOVE | Client → Server | Player makes a move (cell index 0–8) |
-| `2` STATE_UPDATE | Server → All | Full board state after every move |
-| `3` GAME_OVER | Server → All | Game result (winner userId or "draw") |
-| `4` TIMER_UPDATE | Server → All | Remaining ticks for current turn (timed mode) |
-| `5` PLAYER_JOINED | Server → All | Both players connected, game starting |
-
-### Key Files
-
-| File | Purpose |
-|------|---------|
-| `backend/src/match_handler.ts` | Core server-authoritative game logic |
-| `backend/src/matchmaker.ts` | Matchmaker hook — creates match when 2 players found |
-| `backend/src/leaderboard.ts` | Leaderboard RPCs and player stats storage |
-| `backend/src/rpc.ts` | `InitModule` — registers everything with Nakama |
-| `frontend/src/hooks/useNakama.ts` | Nakama client/session/socket management |
-| `frontend/src/hooks/useMatch.ts` | Match state, socket message handling, sendMove |
-
-### Bonus Features
-
-- **Timer mode** — each player has 30 seconds per turn (150 ticks at 5Hz); auto-forfeit on timeout
-- **Leaderboard** — global win leaderboard with win/loss/draw stats and streaks
-- **Graceful disconnection** — if a player disconnects mid-game, their opponent wins automatically
-- **Multiple concurrent sessions** — Nakama handles this natively; each match is an isolated actor
+> If you change any backend code, rebuild with `npm run build` in the `backend/` folder, then run `docker compose restart nakama` to reload it.
 
 ---
 
-## 3. Deployment Process
+## 2. How It Works
 
-### Nakama Server — DigitalOcean Droplet
+### The server is in charge of everything
 
-#### Provision the server
+When you click a cell, your browser just sends "I want to play cell 4" to the server. The server decides if that move is valid, updates the board, and sends the new state back to both players.
 
-1. Create a **$6/month Ubuntu 22.04 Droplet** on DigitalOcean (1 vCPU, 1GB RAM is sufficient)
-2. Add your SSH key during creation
+The client never computes anything on its own — it just displays what the server says.
 
-#### Install Docker on the droplet
+```
+You click cell 4
+      ↓
+Server checks: Is it your turn? Is that cell empty?
+      ↓
+Server updates the board
+      ↓
+Both players get the new board state instantly
+```
+
+This means:
+- You can't fake a win
+- You can't play out of turn
+- You can't move to a cell that's already taken
+
+### How matchmaking works
+
+1. You click "Play Classic" → you enter a queue
+2. Another player clicks "Play Classic" → they enter the same queue
+3. Nakama detects two players waiting → creates a match → sends both players to the game
+4. First player to join gets X, second gets O
+5. X always goes first
+
+### What happens when someone disconnects
+
+If a player closes their tab mid-game, the server detects the disconnection and immediately declares the other player the winner. The remaining player sees "You Win!" on their screen.
+
+---
+
+## 3. Deploying to Production
+
+### Deploy the game server (DigitalOcean)
+
+The cheapest way is a $6/month DigitalOcean Droplet (Ubuntu 22.04).
+
+**Set it up:**
 
 ```bash
-ssh root@YOUR_DROPLET_IP
+# SSH into your droplet
+ssh root@YOUR_IP
 
 # Install Docker
 curl -fsSL https://get.docker.com | sh
-systemctl enable docker
-
-# Install Docker Compose plugin
 apt-get install -y docker-compose-plugin
 ```
 
-#### Deploy Nakama
+**Copy your files to the server:**
 
 ```bash
-# On your local machine — copy the required files
-scp docker-compose.yml nakama-config.yml root@YOUR_DROPLET_IP:/opt/nakama/
-scp -r backend/build root@YOUR_DROPLET_IP:/opt/nakama/backend/
+# Run this from your local machine
+scp docker-compose.yml nakama-config.yml root@YOUR_IP:/opt/nakama/
+scp -r backend/build root@YOUR_IP:/opt/nakama/backend/
+```
 
-# On the droplet
+**Start it:**
+
+```bash
 cd /opt/nakama
 docker compose up -d
 ```
 
-#### Open firewall ports
+**Open the ports:**
 
 ```bash
-ufw allow 7350   # HTTP API (frontend connects here)
-ufw allow 7351   # Developer console
+ufw allow 7350
+ufw allow 7351
 ufw enable
 ```
 
-#### Optional — HTTPS with Nginx + Let's Encrypt
+Your Nakama server is now running at `http://YOUR_IP:7350`
+
+**Want HTTPS?** Install Nginx + Certbot:
 
 ```bash
 apt-get install -y nginx certbot python3-certbot-nginx
 
-# Create Nginx config for your domain
 cat > /etc/nginx/sites-available/nakama <<'EOF'
 server {
     server_name nakama.yourdomain.com;
@@ -227,213 +185,111 @@ server {
     }
 }
 EOF
+
 ln -s /etc/nginx/sites-available/nakama /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
-
-# Get SSL certificate
 certbot --nginx -d nakama.yourdomain.com
 ```
 
-With SSL, set `VITE_NAKAMA_SSL=true` and `VITE_NAKAMA_PORT=443` in Vercel's environment variables.
+### Deploy the frontend (Vercel)
 
-### Frontend — Vercel
-
-1. Push the `tic-tac-toe-nakama/` directory to a **public GitHub repository**
-2. Go to [vercel.com](https://vercel.com) → **New Project** → Import your repo
+1. Push this repo to GitHub
+2. Go to [vercel.com](https://vercel.com) → New Project → import your repo
 3. Set **Root Directory** to `frontend`
-4. Add the following **Environment Variables**:
+4. Add these environment variables:
 
-   | Variable | Value |
-   |----------|-------|
-   | `VITE_NAKAMA_HOST` | `YOUR_DROPLET_IP` or `nakama.yourdomain.com` |
-   | `VITE_NAKAMA_PORT` | `7350` (or `443` if using SSL) |
-   | `VITE_NAKAMA_KEY` | `defaultkey` |
-   | `VITE_NAKAMA_SSL` | `false` (or `true` if using SSL) |
+| Variable | Value |
+|----------|-------|
+| `VITE_NAKAMA_HOST` | Your server IP or domain |
+| `VITE_NAKAMA_PORT` | `7350` (or `443` if using HTTPS) |
+| `VITE_NAKAMA_KEY` | `defaultkey` |
+| `VITE_NAKAMA_SSL` | `false` (or `true` if using HTTPS) |
 
-5. Click **Deploy** — Vercel auto-deploys on every push to main
-
-> **Updating the backend**: After any backend code change, run `npm run build` in `backend/`, copy the new `build/index.js` to the server, and run `docker compose restart nakama`.
+5. Deploy — Vercel will auto-deploy every time you push to main.
 
 ---
 
-## 4. API & Server Configuration
+## 4. API Reference
 
-### Nakama Server Config (`nakama-config.yml`)
+### RPC endpoints
 
-```yaml
-name: nakama1
-runtime:
-  js_entrypoint: index.js    # Entry point for the TypeScript module bundle
-socket:
-  server_key: defaultkey     # Must match VITE_NAKAMA_KEY in frontend
-  port: 7350
-console:
-  port: 7351
-  username: admin
-  password: password         # Change this in production!
-session:
-  token_expiry_sec: 7200     # 2-hour session tokens
-```
+These are server-side functions you can call from the frontend:
 
-### RPC Endpoints
+| Endpoint | What it does | Input | Output |
+|----------|-------------|-------|--------|
+| `submit_score` | Save game result to leaderboard | `{ "result": "win" }` | `{ success, stats }` |
+| `get_leaderboard` | Fetch top 10 players | `{}` | List of players with stats |
 
-RPCs are called via `client.rpc(session, id, payload)`.
+### Message types (opcodes)
 
-| ID | Method | Payload | Response | Description |
-|----|--------|---------|----------|-------------|
-| `submit_score` | POST | `{ "result": "win" \| "loss" \| "draw" }` | `{ success, stats }` | Submit game result; updates leaderboard + player stats |
-| `get_leaderboard` | POST | `{}` | `{ records: [...] }` | Get top 10 players by wins |
+These are the real-time messages sent between client and server during a game:
 
-#### `submit_score` payload
-```json
-{ "result": "win" }
-```
+| Code | Direction | What it means |
+|------|-----------|---------------|
+| 1 — MOVE | You → Server | "I want to play cell X" |
+| 2 — STATE_UPDATE | Server → Both | Here's the current board |
+| 3 — GAME_OVER | Server → Both | Game ended, here's the result |
+| 4 — TIMER_UPDATE | Server → Both | Seconds remaining this turn |
+| 5 — PLAYER_JOINED | Server → Both | Both players connected, game starting |
 
-#### `get_leaderboard` response
-```json
-{
-  "records": [
-    {
-      "rank": 1,
-      "userId": "abc123",
-      "username": "SwiftFox42",
-      "wins": 15,
-      "losses": 3,
-      "draws": 1,
-      "bestStreak": 7,
-      "currentStreak": 3
-    }
-  ]
-}
-```
-
-### Match Registration
-
-The match type is registered as `"tictactoe"` and can be created with optional params:
-
-```
-nk.matchCreate("tictactoe", { timerEnabled: "true" | "false" })
-```
-
-### Nakama Storage Schema
-
-**Collection**: `player_stats`  
-**Key**: `stats`  
-**Permission**: Public read, server-only write
+### Player stats (stored per user)
 
 ```json
 {
-  "wins": 0,
-  "losses": 0,
-  "draws": 0,
-  "currentStreak": 0,
-  "bestStreak": 0
+  "wins": 5,
+  "losses": 2,
+  "draws": 1,
+  "currentStreak": 3,
+  "bestStreak": 5
 }
 ```
 
 ---
 
-## 5. How to Test Multiplayer
+## 5. Testing Checklist
 
-### Local Testing (Two Browser Profiles)
+**Basic game:**
+- [ ] Open two incognito windows, click Play Classic in both → game starts
+- [ ] Take turns clicking cells → moves show up on both screens
+- [ ] Complete a game → winner screen shows correctly on both sides
 
-The easiest way to test both players locally:
+**Timer mode:**
+- [ ] Click Play Timed in both windows
+- [ ] Let the timer run out → current player forfeits, opponent wins
 
-1. Start Nakama: `docker compose up`
-2. Start frontend: `cd frontend && npm run dev`
-3. Open **two incognito windows** (or use Chrome + Firefox) — each gets a different `localStorage` entry and thus a different Nakama device ID
-4. In both windows, navigate to `http://localhost:3000`
-5. Click **"Play Classic"** in both windows within a few seconds
-6. The matchmaker finds both players and redirects them to a shared game screen
-7. Take turns clicking cells — each move is validated server-side and synced in real time
+**Disconnect handling:**
+- [ ] Start a game, make one move, close one tab → remaining player wins
 
-### Testing Timer Mode
+**Leaderboard:**
+- [ ] Play a few games → go to `/leaderboard` → your stats appear
 
-1. Click **"Play Timed"** in both windows
-2. When the game starts, let the timer run out on your turn
-3. Nakama automatically forfeits the current player and declares the other player the winner
-
-### Testing Disconnection Handling
-
-1. Start a game in both windows
-2. Make at least one move
-3. Close one of the browser tabs
-4. The remaining player's screen shows "You Win!" (the disconnected player forfeits)
-
-### Testing via Nakama Console
-
-The developer console at `http://localhost:7351` (admin/password) is invaluable for debugging:
-
-- **Runtime → Modules** — verify `index.js` is loaded
-- **Matches** — see active matches, inspect state in real time
-- **Storage** — browse `player_stats` objects after playing
-- **Leaderboard** — view the `global_wins` leaderboard entries
-- **Accounts** — see all authenticated device users
-
-### Testing with a Friend (Deployed)
-
-1. Share the deployed frontend URL
-2. Both players open it simultaneously
-3. Click "Play Classic" — you're matched automatically
-4. Play from any device, including mobile (the UI is responsive)
-
-### Full Game Flow Walkthrough
-
-```
-1. Player opens frontend → auto-authenticates with device ID → socket connects
-2. Player clicks "Play Classic" → joins matchmaker queue
-3. Opponent joins queue → Nakama matchmakerMatched hook fires
-4. Server creates authoritative match → returns matchId to both clients
-5. Both clients joinMatch(matchId) → server assigns X to first joiner, O to second
-6. Server broadcasts PLAYER_JOINED → game begins; X player goes first
-7. X player clicks cell 4 → MOVE sent to server
-8. Server validates: correct player, empty cell, valid index
-9. Server updates board, checks win/draw, broadcasts STATE_UPDATE
-10. O player's board updates instantly
-11. Game continues until win/draw/disconnect
-12. GAME_OVER broadcast → both clients show result
-13. Frontend calls submit_score RPC → leaderboard updated
-```
+**Nakama console (debugging):**
+Go to `http://localhost:7351` → login with `admin/password`
+- **Runtime → Modules** — `index.js` should be listed
+- **Matches** — see live matches while playing
+- **Storage** — check player stats after games
 
 ---
 
-## Development Notes
+## Project Structure
 
-### Backend Build Requirements
-
-The Nakama JavaScript runtime has strict constraints:
-- TypeScript must target `ES5` with `outFile` (single-file bundle)
-- No `"module"` field in tsconfig — the runtime is not a Node.js environment
-- All source files compiled into a single `index.js`
-- Handler functions must be global `function` declarations (not arrow functions)
-
-### Environment Variables Reference
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VITE_NAKAMA_HOST` | `localhost` | Nakama server hostname or IP |
-| `VITE_NAKAMA_PORT` | `7350` | Nakama HTTP port |
-| `VITE_NAKAMA_KEY` | `defaultkey` | Server key (must match `socket.server_key` in config) |
-| `VITE_NAKAMA_SSL` | `false` | Set to `true` when using HTTPS |
-
-### Changing the Server Key (Production)
-
-1. Update `nakama-config.yml`: `socket.server_key: your-production-key`
-2. Update Vercel env var: `VITE_NAKAMA_KEY=your-production-key`
-3. Rebuild and redeploy both
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Game Backend | Nakama 3.22 (TypeScript runtime) |
-| Database | CockroachDB (Nakama-managed) |
-| Frontend | React 18 + TypeScript + Vite |
-| Styling | TailwindCSS |
-| State management | React hooks (useState, useContext) |
-| Nakama SDK | `@heroiclabs/nakama-js` |
-| Local infra | Docker Compose |
-| Server deployment | DigitalOcean Droplet + Docker |
-| Frontend deployment | Vercel |
+```
+tic-tac-toe-nakama/
+├── backend/
+│   ├── src/
+│   │   ├── match_handler.ts   ← all game logic lives here
+│   │   ├── matchmaker.ts      ← pairs players together
+│   │   ├── leaderboard.ts     ← win/loss tracking
+│   │   └── rpc.ts             ← registers everything with Nakama
+│   └── build/
+│       └── index.js           ← compiled output (what Nakama actually runs)
+├── frontend/
+│   └── src/
+│       ├── hooks/
+│       │   ├── useNakama.ts   ← manages server connection
+│       │   └── useMatch.ts    ← handles game state
+│       ├── components/        ← Board, Timer, Leaderboard, etc.
+│       └── pages/             ← Home, Game, Leaderboard
+├── docker-compose.yml         ← runs Nakama + PostgreSQL locally
+└── nakama-config.yml          ← server configuration
+```
